@@ -1,5 +1,8 @@
-use actix_web::{error, get, App, HttpResponse, HttpServer, ResponseError};
+use actix_web::{error, get, web, App, HttpResponse, HttpServer, ResponseError};
 use askama::Template;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
 use thiserror::Error;
 
 struct TodoEntry {
@@ -17,12 +20,20 @@ struct IndexTemplate {
 enum MyError {
     #[error("Failed to render HTML")]
     AskamaError(#[from] askama::Error),
+
+    #[error("Failed to get connection")]
+    ConnectionPoolError(#[from] r2d2::Error),
+    #[error("Failed SQL execution")]
+    SqliteError(#[from] rusqlite::Error),
 }
 
 impl ResponseError for MyError {}
 
 #[get("/")]
-async fn index() -> Result<HttpResponse, MyError> {
+async fn index(db: web::Data<Pool<SqliteConnectionManager>>) -> Result<HttpResponse, MyError> {
+    let conn = db.get();
+    let mut statement = conn.prepare("SELECT id, text FROM todo")?;
+
     let mut entries = Vec::new();
     entries.push(TodoEntry {
         id: 1,
